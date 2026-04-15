@@ -34,11 +34,11 @@ export default function CoursesScreen() {
   }, [load]);
 
   if (loading) {
-    return <LoadingScreen label="Загружаем список курсов..." />;
+    return <LoadingScreen label="Загружаем список курсов..." omitBottomSafeArea />;
   }
 
   return (
-    <Screen backgroundColor={palette.background}>
+    <Screen backgroundColor={palette.background} omitBottomSafeArea>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={

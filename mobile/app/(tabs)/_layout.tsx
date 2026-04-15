@@ -1,11 +1,17 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { palette } from '@/constants/theme';
 
+const TAB_BAR_BASE_HEIGHT = 74;
+const TAB_BAR_PADDING_BOTTOM = 10;
+
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -13,10 +19,13 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarInactiveTintColor: palette.tabInactive,
+        sceneStyle: {
+          backgroundColor: palette.background,
+        },
         tabBarStyle: {
-          height: 74,
+          height: TAB_BAR_BASE_HEIGHT + insets.bottom,
           paddingTop: 8,
-          paddingBottom: 10,
+          paddingBottom: TAB_BAR_PADDING_BOTTOM + insets.bottom,
           backgroundColor: '#FFFFFF',
           borderTopColor: palette.border,
         },
@@ -44,13 +53,6 @@ export default function TabLayout() {
         options={{
           title: 'Прогресс',
           tabBarIcon: ({ color }) => <IconSymbol size={26} name="chart.line.uptrend.xyaxis" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="community"
-        options={{
-          title: 'Сообщество',
-          tabBarIcon: ({ color }) => <IconSymbol size={26} name="person.3.fill" color={color} />,
         }}
       />
       <Tabs.Screen

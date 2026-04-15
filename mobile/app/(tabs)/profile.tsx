@@ -14,7 +14,7 @@ export default function ProfileScreen() {
   };
 
   return (
-    <Screen backgroundColor={palette.background}>
+    <Screen backgroundColor={palette.background} omitBottomSafeArea>
       <Text style={styles.title}>Профиль</Text>
       <Text style={styles.subtitle}>Ваши достижения и личные показатели обучения.</Text>
 

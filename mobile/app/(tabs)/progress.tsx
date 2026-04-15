@@ -39,13 +39,13 @@ export default function ProgressScreen() {
   }, [load]);
 
   if (loading) {
-    return <LoadingScreen label="Считаем ваш прогресс..." />;
+    return <LoadingScreen label="Считаем ваш прогресс..." omitBottomSafeArea />;
   }
 
   const overview = progress?.overview;
 
   return (
-    <Screen backgroundColor={palette.background}>
+    <Screen backgroundColor={palette.background} omitBottomSafeArea>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={

@@ -155,27 +155,6 @@ export default function LessonScreen() {
         </LinearGradient>
 
         <View style={styles.body}>
-          <Text style={styles.sectionTitle}>Некоторые виды логистики:</Text>
-
-          <View style={styles.cardsGrid}>
-            {['Транспортная', 'Складская', 'Производственная', 'Информационная'].map(
-              (item, index) => (
-                <View
-                  key={item}
-                  style={[
-                    styles.topicCard,
-                    index === 0 && styles.topicBlue,
-                    index === 1 && styles.topicGreen,
-                    index === 2 && styles.topicOrange,
-                    index === 3 && styles.topicPurple,
-                  ]}>
-                  <Text style={styles.topicIcon}>{['🚚', '🏬', '⚙', '☁'][index]}</Text>
-                  <Text style={styles.topicText}>{item}</Text>
-                </View>
-              ),
-            )}
-          </View>
-
           {currentTask ? (
             <AppCard>
               <Text style={styles.taskLabel}>
@@ -314,48 +293,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     gap: 18,
-  },
-  sectionTitle: {
-    color: palette.text,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  cardsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 14,
-  },
-  topicCard: {
-    width: '47%',
-    borderRadius: radii.lg,
-    padding: 18,
-    minHeight: 120,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-  },
-  topicBlue: {
-    backgroundColor: '#EEF4FF',
-  },
-  topicGreen: {
-    backgroundColor: '#ECFFF2',
-  },
-  topicOrange: {
-    backgroundColor: '#FFF4E7',
-  },
-  topicPurple: {
-    backgroundColor: '#F6EFFF',
-    borderWidth: 1,
-    borderColor: '#CFC7FF',
-  },
-  topicIcon: {
-    fontSize: 28,
-  },
-  topicText: {
-    color: palette.text,
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
   },
   taskLabel: {
     color: palette.purple,

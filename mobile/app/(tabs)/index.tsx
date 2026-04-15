@@ -68,11 +68,11 @@ export default function HomeScreen() {
   const totalModules = progress?.overview.totalModules ?? 0;
 
   if (!loaded && !refreshing) {
-    return <LoadingScreen />;
+    return <LoadingScreen omitBottomSafeArea />;
   }
 
   return (
-    <Screen backgroundColor={palette.background} padded={false}>
+    <Screen backgroundColor={palette.background} padded={false} omitBottomSafeArea>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={

@@ -4,13 +4,15 @@ import { palette } from '@/constants/theme';
 
 type LoadingScreenProps = {
   label?: string;
+  omitBottomSafeArea?: boolean;
 };
 
 export function LoadingScreen({
   label = 'Загружаем учебный маршрут...',
+  omitBottomSafeArea,
 }: LoadingScreenProps) {
   return (
-    <Screen>
+    <Screen omitBottomSafeArea={omitBottomSafeArea}>
       <View style={styles.container}>
         <ActivityIndicator size="large" color={palette.purple} />
         <Text style={styles.label}>{label}</Text>
