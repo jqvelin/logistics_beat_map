@@ -8,7 +8,7 @@ The goal of the system is to:
 - Improve understanding of logistics concepts
 - Provide interactive and practical learning
 
----
+Target audience of the app speaks Russian, so everything related to the interface should be in Russian as well!
 
 ## 🧱 High-Level Architecture
 
