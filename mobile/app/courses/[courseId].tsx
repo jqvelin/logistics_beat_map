@@ -1,0 +1,144 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams, router } from 'expo-router';
+import { AppCard } from '@/components/app-card';
+import { LoadingScreen } from '@/components/loading-screen';
+import { Screen } from '@/components/screen';
+import { palette } from '@/constants/theme';
+import { api } from '@/lib/api';
+import type { CourseDetail } from '@/lib/types';
+
+export default function CourseDetailScreen() {
+  const { courseId } = useLocalSearchParams<{ courseId: string }>();
+  const [course, setCourse] = useState<CourseDetail | null>(null);
+
+  const load = useCallback(async () => {
+    if (!courseId) {
+      return;
+    }
+
+    const response = await api.getCourse(courseId);
+    setCourse(response);
+  }, [courseId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (!course) {
+    return <LoadingScreen label="Открываем курс..." />;
+  }
+
+  return (
+    <Screen backgroundColor={palette.background}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Pressable onPress={() => router.back()}>
+          <Text style={styles.back}>‹ Назад</Text>
+        </Pressable>
+
+        <Text style={styles.title}>{course.title}</Text>
+
+        {course.modules.map((module, moduleIndex) => (
+          <AppCard key={module.id}>
+            <Text style={styles.moduleLabel}>Модуль {moduleIndex + 1}</Text>
+            <Text style={styles.moduleTitle}>{module.title}</Text>
+
+            <View style={styles.lessonList}>
+              {module.lessons.map((lesson, lessonIndex) => (
+                <Pressable
+                  key={lesson.id}
+                  style={styles.lessonRow}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/lessons/[lessonId]',
+                      params: { lessonId: lesson.id },
+                    })
+                  }>
+                  <View style={styles.lessonIndex}>
+                    <Text style={styles.lessonIndexText}>{lessonIndex + 1}</Text>
+                  </View>
+                  <View style={styles.lessonBody}>
+                    <Text style={styles.lessonTitle}>{lesson.title}</Text>
+                    <Text style={styles.lessonMeta}>{lesson.tasks.length} заданий</Text>
+                  </View>
+                  <Text style={styles.lessonArrow}>›</Text>
+                </Pressable>
+              ))}
+            </View>
+          </AppCard>
+        ))}
+      </ScrollView>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: {
+    gap: 14,
+    paddingBottom: 30,
+  },
+  back: {
+    color: palette.purple,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  title: {
+    color: palette.text,
+    fontSize: 28,
+    fontWeight: '800',
+    lineHeight: 36,
+  },
+  moduleLabel: {
+    color: palette.purple,
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  moduleTitle: {
+    color: palette.text,
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 28,
+  },
+  lessonList: {
+    marginTop: 16,
+    gap: 12,
+  },
+  lessonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  lessonIndex: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#EEF3FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lessonIndexText: {
+    color: palette.purple,
+    fontWeight: '800',
+  },
+  lessonBody: {
+    flex: 1,
+    gap: 4,
+  },
+  lessonTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  lessonMeta: {
+    color: palette.textMuted,
+    fontSize: 14,
+  },
+  lessonArrow: {
+    color: palette.purple,
+    fontSize: 22,
+    fontWeight: '800',
+  },
+});

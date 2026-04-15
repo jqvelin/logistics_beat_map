@@ -14,11 +14,151 @@ type QuizTaskContent = {
   answer: number;
 };
 
+type SanitizedQuizTaskContent = Omit<QuizTaskContent, 'answer'>;
+
 const XP_PER_TASK = 25;
 
 @Injectable()
 export class LearningService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async getProgress(userId: string) {
+    const [completedProgress, courses] = await Promise.all([
+      this.prisma.progress.findMany({
+        where: {
+          userId,
+          completed: true,
+        },
+        select: {
+          taskId: true,
+          completedAt: true,
+        },
+      }),
+      this.prisma.course.findMany({
+        orderBy: { createdAt: 'asc' },
+        include: {
+          modules: {
+            orderBy: { createdAt: 'asc' },
+            include: {
+              lessons: {
+                orderBy: { createdAt: 'asc' },
+                include: {
+                  tasks: {
+                    orderBy: { createdAt: 'asc' },
+                    select: {
+                      id: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const completedTaskIds = completedProgress.map((item) => item.taskId);
+    const completedTaskIdSet = new Set(completedTaskIds);
+    const todayDayNumber = this.toDayNumber(new Date());
+    const tasksCompletedToday = completedProgress.filter((item) => {
+      return item.completedAt && this.toDayNumber(item.completedAt) === todayDayNumber;
+    }).length;
+
+    const coursesProgress = courses.map((course) => {
+      const modules = course.modules.map((module) => {
+        const lessons = module.lessons.map((lesson) => {
+          const totalTasks = lesson.tasks.length;
+          const completedTasks = lesson.tasks.filter((task) =>
+            completedTaskIdSet.has(task.id),
+          ).length;
+
+          return {
+            lessonId: lesson.id,
+            title: lesson.title,
+            totalTasks,
+            completedTasks,
+            isCompleted: totalTasks > 0 && completedTasks === totalTasks,
+          };
+        });
+
+        const totalLessons = lessons.length;
+        const completedLessons = lessons.filter((lesson) => lesson.isCompleted).length;
+        const totalTasks = lessons.reduce((sum, lesson) => sum + lesson.totalTasks, 0);
+        const completedTasks = lessons.reduce(
+          (sum, lesson) => sum + lesson.completedTasks,
+          0,
+        );
+
+        return {
+          moduleId: module.id,
+          title: module.title,
+          totalLessons,
+          completedLessons,
+          totalTasks,
+          completedTasks,
+          isCompleted: totalTasks > 0 && completedTasks === totalTasks,
+          lessons,
+        };
+      });
+
+      const totalModules = modules.length;
+      const completedModules = modules.filter((module) => module.isCompleted).length;
+      const totalLessons = modules.reduce((sum, module) => sum + module.totalLessons, 0);
+      const completedLessons = modules.reduce(
+        (sum, module) => sum + module.completedLessons,
+        0,
+      );
+      const totalTasks = modules.reduce((sum, module) => sum + module.totalTasks, 0);
+      const completedTasks = modules.reduce(
+        (sum, module) => sum + module.completedTasks,
+        0,
+      );
+
+      return {
+        courseId: course.id,
+        title: course.title,
+        totalModules,
+        completedModules,
+        totalLessons,
+        completedLessons,
+        totalTasks,
+        completedTasks,
+        isCompleted: totalTasks > 0 && completedTasks === totalTasks,
+        modules,
+      };
+    });
+
+    const overview = coursesProgress.reduce(
+      (summary, course) => ({
+        totalCourses: summary.totalCourses + 1,
+        completedCourses: summary.completedCourses + (course.isCompleted ? 1 : 0),
+        totalModules: summary.totalModules + course.totalModules,
+        completedModules: summary.completedModules + course.completedModules,
+        totalLessons: summary.totalLessons + course.totalLessons,
+        completedLessons: summary.completedLessons + course.completedLessons,
+        totalTasks: summary.totalTasks + course.totalTasks,
+        completedTasks: summary.completedTasks + course.completedTasks,
+      }),
+      {
+        totalCourses: 0,
+        completedCourses: 0,
+        totalModules: 0,
+        completedModules: 0,
+        totalLessons: 0,
+        completedLessons: 0,
+        totalTasks: 0,
+        completedTasks: 0,
+      },
+    );
+
+    return {
+      completedTaskIds,
+      tasksCompletedToday,
+      xpGainedToday: tasksCompletedToday * XP_PER_TASK,
+      overview,
+      courses: coursesProgress,
+    };
+  }
 
   async getNextTask(userId: string) {
     const task = await this.prisma.task.findFirst({
@@ -48,7 +188,7 @@ export class LearningService {
       return null;
     }
 
-    return task;
+    return this.sanitizeTask(task);
   }
 
   async completeTask(userId: string, dto: CompleteTaskDto) {
@@ -125,7 +265,7 @@ export class LearningService {
     }
 
     return {
-      task,
+      task: this.sanitizeTask(task),
       progress,
       user: updatedUser,
       awardedXp: existingProgress?.completed ? 0 : XP_PER_TASK,
@@ -226,7 +366,29 @@ export class LearningService {
   }
 
   private toDayNumber(date: Date) {
-    const utcDate = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+    const utcDate = Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+    );
     return Math.floor(utcDate / 86_400_000);
+  }
+
+  private sanitizeTask<T extends { type: string; content: Prisma.JsonValue }>(task: T) {
+    return {
+      ...task,
+      content: this.sanitizeTaskContent(task.type, task.content),
+    };
+  }
+
+  private sanitizeTaskContent(type: string, content: Prisma.JsonValue) {
+    if (type !== 'quiz' || !content || Array.isArray(content) || typeof content !== 'object') {
+      return content;
+    }
+
+    const { answer: _answer, ...sanitizedContent } =
+      content as unknown as QuizTaskContent;
+
+    return sanitizedContent as unknown as SanitizedQuizTaskContent;
   }
 }

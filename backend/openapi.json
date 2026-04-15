@@ -160,6 +160,20 @@
         ]
       }
     },
+    "/api/learning/progress": {
+      "get": {
+        "operationId": "LearningController_getProgress",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Learning"
+        ]
+      }
+    },
     "/api/learning/next-task": {
       "get": {
         "operationId": "LearningController_getNextTask",
