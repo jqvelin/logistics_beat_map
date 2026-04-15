@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { AppCard } from '@/components/app-card';
 import { Screen } from '@/components/screen';
 import { palette, radii } from '@/constants/theme';
@@ -6,6 +7,11 @@ import { useAuth } from '@/lib/auth-context';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace('/auth');
+  };
 
   return (
     <Screen backgroundColor={palette.background}>
@@ -31,7 +37,7 @@ export default function ProfileScreen() {
         </AppCard>
       </View>
 
-      <Pressable style={styles.logoutButton} onPress={() => void logout()}>
+      <Pressable style={styles.logoutButton} onPress={() => void handleLogout()}>
         <Text style={styles.logoutText}>Выйти из аккаунта</Text>
       </Pressable>
     </Screen>
