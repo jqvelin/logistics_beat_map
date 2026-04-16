@@ -136,6 +136,11 @@ export default function AuthScreen() {
                 placeholder={pendingEmail ? '000000' : 'student@example.com'}
                 placeholderTextColor={palette.textSoft}
               />
+              {pendingEmail ? (
+                <Text style={styles.codeHint}>
+                  Прислали код подтверждения на почту. Введите его в поле выше, чтобы войти в приложение.
+                </Text>
+              ) : null}
             </View>
           ) : (
             <>
@@ -335,5 +340,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     textAlign: 'center',
+  },
+  codeHint: {
+    color: palette.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 2,
   },
 });

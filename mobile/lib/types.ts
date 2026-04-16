@@ -29,11 +29,16 @@ export type SimulationTaskContent = {
   steps: string[];
 };
 
-export type TaskContent = QuizTaskContent | SimulationTaskContent;
+export type TheoryTaskContent = {
+  type: 'theory';
+  text: string;
+};
+
+export type TaskContent = QuizTaskContent | SimulationTaskContent | TheoryTaskContent;
 
 export type LessonTask = {
   id: string;
-  type: 'quiz' | 'simulation';
+  type: 'quiz' | 'simulation' | 'theory';
   content: TaskContent;
   createdAt?: string;
   updatedAt?: string;

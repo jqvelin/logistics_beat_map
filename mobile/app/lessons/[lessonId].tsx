@@ -26,6 +26,7 @@ import type {
   ProgressResponse,
   QuizTaskContent,
   SimulationTaskContent,
+  TheoryTaskContent,
 } from '@/lib/types';
 
 const FEEDBACK_SETTLE_MS = 1000;
@@ -46,6 +47,7 @@ export default function LessonScreen() {
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [progress, setProgress] = useState<ProgressResponse | null>(null);
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
+  const [viewedTheoryIds, setViewedTheoryIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [ctaPhase, setCtaPhase] = useState<CtaPhase>('idle');
   const [ctaXp, setCtaXp] = useState(0);
@@ -90,8 +92,14 @@ export default function LessonScreen() {
     () => progress?.completedTaskIds ?? [],
     [progress],
   );
-  const completedTasks = lesson?.tasks.filter((task) => completedTaskIds.includes(task.id)).length ?? 0;
-  const totalTasks = lesson?.tasks.length ?? 0;
+
+  // Theory tasks are handled locally — they don't affect server-side progress or XP.
+  const nonTheoryTasks = useMemo(
+    () => lesson?.tasks.filter((task) => task.type !== 'theory') ?? [],
+    [lesson],
+  );
+  const completedTasks = nonTheoryTasks.filter((task) => completedTaskIds.includes(task.id)).length;
+  const totalTasks = nonTheoryTasks.length;
   const progressRatio = totalTasks > 0 ? completedTasks / totalTasks : 0;
 
   const currentTask = useMemo<LessonTask | null>(() => {
@@ -99,12 +107,17 @@ export default function LessonScreen() {
       return null;
     }
 
-    return lesson.tasks.find((task) => !completedTaskIds.includes(task.id)) ?? null;
-  }, [lesson, completedTaskIds]);
+    return (
+      lesson.tasks.find((task) => {
+        if (task.type === 'theory') return !viewedTheoryIds.has(task.id);
+        return !completedTaskIds.includes(task.id);
+      }) ?? null
+    );
+  }, [lesson, completedTaskIds, viewedTheoryIds]);
 
-  const lessonComplete = totalTasks > 0 && completedTasks >= totalTasks;
+  const lessonComplete = !loading && lesson !== null && lesson.tasks.length > 0 && currentTask === null;
   const taskOrdinal = currentTask
-    ? lesson!.tasks.findIndex((t) => t.id === currentTask.id) + 1
+    ? nonTheoryTasks.findIndex((t) => t.id === currentTask.id) + 1
     : totalTasks;
 
   const finalizeAfterCorrect = useCallback(
@@ -114,7 +127,9 @@ export default function LessonScreen() {
       }
 
       const nextCompletedIds = [...completedTaskIds, completedTaskId];
-      const allTasksDone = lesson.tasks.every((t) => nextCompletedIds.includes(t.id));
+      const allTasksDone = lesson.tasks
+        .filter((t) => t.type !== 'theory')
+        .every((t) => nextCompletedIds.includes(t.id));
 
       await refreshUser();
       await load();
@@ -139,6 +154,12 @@ export default function LessonScreen() {
     }
 
     clearCtaTimer();
+
+    // Theory tasks are read-only: advance locally, no API call, no XP.
+    if (currentTask.type === 'theory') {
+      setViewedTheoryIds((prev) => new Set([...prev, currentTask.id]));
+      return;
+    }
 
     if (currentTask.type === 'quiz' && selectedOptionIndex === null) {
       setCtaPhase('pick');
@@ -196,6 +217,10 @@ export default function LessonScreen() {
     currentTask?.type === 'simulation'
       ? (currentTask.content as SimulationTaskContent)
       : null;
+  const theoryContent =
+    currentTask?.type === 'theory'
+      ? (currentTask.content as TheoryTaskContent)
+      : null;
 
   const ctaLabel = useMemo(() => {
     switch (ctaPhase) {
@@ -212,6 +237,7 @@ export default function LessonScreen() {
           ? `${ctaNetworkMessage.slice(0, 37)}…`
           : ctaNetworkMessage;
       default:
+        if (currentTask?.type === 'theory') return 'Приступить к тесту →';
         return currentTask ? 'Далее →' : 'Подождите...';
     }
   }, [ctaPhase, ctaXp, ctaNetworkMessage, currentTask]);
@@ -263,9 +289,13 @@ export default function LessonScreen() {
             </Text>
 
             {!lessonComplete && currentTask ? (
-              <Text style={styles.heroSubtitle} numberOfLines={1}>
-                {`Задание ${taskOrdinal} из ${totalTasks} · ${Math.round(progressRatio * 100)}%`}
-              </Text>
+              currentTask.type === 'theory' ? (
+                <Text style={styles.heroSubtitle}>Изучите материал</Text>
+              ) : (
+                <Text style={styles.heroSubtitle} numberOfLines={1}>
+                  {`Вопрос ${taskOrdinal} из ${totalTasks} · ${Math.round(progressRatio * 100)}%`}
+                </Text>
+              )
             ) : lessonComplete ? (
               <Text style={styles.heroSubtitle}>Урок пройден</Text>
             ) : null}
@@ -295,7 +325,11 @@ export default function LessonScreen() {
             ) : currentTask ? (
               <AppCard>
                 <Text style={styles.taskLabel}>
-                  {currentTask.type === 'quiz' ? 'Текущий вопрос' : 'Практический сценарий'}
+                  {currentTask.type === 'quiz'
+                    ? 'Вопрос'
+                    : currentTask.type === 'theory'
+                      ? 'Теория'
+                      : 'Практический сценарий'}
                 </Text>
 
                 {quizContent ? (
@@ -339,6 +373,8 @@ export default function LessonScreen() {
                       ))}
                     </View>
                   </>
+                ) : theoryContent ? (
+                  <Text style={styles.theoryText}>{theoryContent.text}</Text>
                 ) : null}
               </AppCard>
             ) : (
@@ -604,5 +640,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '800',
+  },
+  theoryText: {
+    color: palette.text,
+    fontSize: 15,
+    lineHeight: 24,
   },
 });
