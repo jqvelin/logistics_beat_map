@@ -5,6 +5,7 @@ import type {
   CompleteTaskResponse,
   CourseDetail,
   CourseSummary,
+  EmailCodeRequestResponse,
   Lesson,
   NextTaskResponse,
   ProgressResponse,
@@ -68,6 +69,18 @@ export const api = {
     return request<AuthResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    });
+  },
+  requestEmailCode(email: string) {
+    return request<EmailCodeRequestResponse>('/auth/email-code', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+  verifyEmailCode(email: string, code: string) {
+    return request<AuthResponse>('/auth/email-code/verify', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
     });
   },
   getMe(token: string) {

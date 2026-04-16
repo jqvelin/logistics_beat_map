@@ -13,6 +13,10 @@ export type AuthResponse = {
   user: User;
 };
 
+export type EmailCodeRequestResponse = {
+  message: string;
+};
+
 export type QuizTaskContent = {
   type: 'quiz';
   question: string;

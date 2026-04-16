@@ -63,6 +63,54 @@
         ]
       }
     },
+    "/api/auth/email-code": {
+      "post": {
+        "operationId": "AuthController_sendEmailCode",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailCodeRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/email-code/verify": {
+      "post": {
+        "operationId": "AuthController_verifyEmailCode",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailCodeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/api/users/me": {
       "get": {
         "operationId": "UsersController_getMe",
@@ -263,6 +311,14 @@
         "properties": {}
       },
       "LoginDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "EmailCodeRequestDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "VerifyEmailCodeDto": {
         "type": "object",
         "properties": {}
       },

@@ -15,14 +15,17 @@ import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
 
 export default function AuthScreen() {
-  const { login, register } = useAuth();
+  const { login, register, requestEmailCode, verifyEmailCode } = useAuth();
+  const [authMethod, setAuthMethod] = useState<'email' | 'password'>('email');
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('student@example.com');
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [emailCode, setEmailCode] = useState('');
   const [password, setPassword] = useState('password123');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const submit = async () => {
+  const submitPassword = async () => {
     setSubmitting(true);
     setError(null);
 
@@ -31,6 +34,28 @@ export default function AuthScreen() {
         await login(email.trim(), password);
       } else {
         await register(email.trim(), password);
+      }
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : 'Не удалось подключиться к серверу',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitEmailAuth = async () => {
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      if (pendingEmail) {
+        await verifyEmailCode(pendingEmail, emailCode.trim());
+      } else {
+        const normalizedEmail = email.trim();
+        await requestEmailCode(normalizedEmail);
+        setPendingEmail(normalizedEmail);
+        setEmailCode('');
       }
     } catch (err) {
       setError(
@@ -57,69 +82,146 @@ export default function AuthScreen() {
         <View style={styles.card}>
           <View style={styles.segment}>
             <Pressable
-              style={[styles.segmentButton, mode === 'login' && styles.segmentButtonActive]}
-              onPress={() => setMode('login')}>
+              style={[
+                styles.segmentButton,
+                authMethod === 'email' && styles.segmentButtonActive,
+              ]}
+              onPress={() => {
+                setAuthMethod('email');
+                setPendingEmail(null);
+                setEmailCode('');
+                setError(null);
+              }}>
               <Text
                 style={[
                   styles.segmentLabel,
-                  mode === 'login' && styles.segmentLabelActive,
+                  authMethod === 'email' && styles.segmentLabelActive,
                 ]}>
-                Вход
+                Почта
               </Text>
             </Pressable>
             <Pressable
-              style={[styles.segmentButton, mode === 'register' && styles.segmentButtonActive]}
-              onPress={() => setMode('register')}>
+              style={[
+                styles.segmentButton,
+                authMethod === 'password' && styles.segmentButtonActive,
+              ]}
+              onPress={() => {
+                setAuthMethod('password');
+                setPendingEmail(null);
+                setEmailCode('');
+                setError(null);
+              }}>
               <Text
                 style={[
                   styles.segmentLabel,
-                  mode === 'register' && styles.segmentLabelActive,
+                  authMethod === 'password' && styles.segmentLabelActive,
                 ]}>
-                Регистрация
+                Пароль
               </Text>
             </Pressable>
           </View>
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Email</Text>
-            <TextInput
-              autoCapitalize="none"
-              keyboardType="email-address"
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="student@example.com"
-              placeholderTextColor={palette.textSoft}
-            />
-          </View>
+          {authMethod === 'email' ? (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>{pendingEmail ? 'Код' : 'Email'}</Text>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!submitting}
+                keyboardType={pendingEmail ? 'number-pad' : 'email-address'}
+                maxLength={pendingEmail ? 6 : undefined}
+                style={styles.input}
+                value={pendingEmail ? emailCode : email}
+                onChangeText={pendingEmail ? setEmailCode : setEmail}
+                placeholder={pendingEmail ? '000000' : 'student@example.com'}
+                placeholderTextColor={palette.textSoft}
+              />
+            </View>
+          ) : (
+            <>
+              <View style={styles.segment}>
+                <Pressable
+                  style={[
+                    styles.segmentButton,
+                    mode === 'login' && styles.segmentButtonActive,
+                  ]}
+                  onPress={() => setMode('login')}>
+                  <Text
+                    style={[
+                      styles.segmentLabel,
+                      mode === 'login' && styles.segmentLabelActive,
+                    ]}>
+                    Вход
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.segmentButton,
+                    mode === 'register' && styles.segmentButtonActive,
+                  ]}
+                  onPress={() => setMode('register')}>
+                  <Text
+                    style={[
+                      styles.segmentLabel,
+                      mode === 'register' && styles.segmentLabelActive,
+                    ]}>
+                    Регистрация
+                  </Text>
+                </Pressable>
+              </View>
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Пароль</Text>
-            <TextInput
-              secureTextEntry
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Не менее 8 символов"
-              placeholderTextColor={palette.textSoft}
-            />
-          </View>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Пароль</Text>
+                <TextInput
+                  editable={!submitting}
+                  secureTextEntry
+                  style={styles.input}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Не менее 8 символов"
+                  placeholderTextColor={palette.textSoft}
+                />
+              </View>
+            </>
+          )}
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          <Pressable style={styles.primaryButton} onPress={submit} disabled={submitting}>
+          <Pressable
+            style={[
+              styles.primaryButton,
+              submitting && styles.primaryButtonDisabled,
+            ]}
+            onPress={authMethod === 'email' ? submitEmailAuth : submitPassword}
+            disabled={submitting}>
             <Text style={styles.primaryButtonLabel}>
               {submitting
-                ? 'Подключаемся...'
-                : mode === 'login'
-                  ? 'Войти'
-                  : 'Создать аккаунт'}
+                ? authMethod === 'email'
+                  ? pendingEmail
+                    ? 'Проверяем код...'
+                    : 'Отправляем код...'
+                  : 'Подключаемся...'
+                : authMethod === 'email'
+                  ? pendingEmail
+                    ? 'Войти'
+                    : 'Отправить код'
+                  : mode === 'login'
+                    ? 'Войти'
+                    : 'Создать аккаунт'}
             </Text>
           </Pressable>
 
-          <Text style={styles.hint}>
-            Для быстрого входа можно использовать тестовый аккаунт `student@example.com`.
-          </Text>
+          {authMethod === 'password' ? (
+            <Text style={styles.hint}>
+              Для быстрого входа можно использовать тестовый аккаунт
+              {' '}
+              `student@example.com`
+              {' '}
+              с паролем
+              {' '}
+              `password123`.
+            </Text>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
     </Screen>
@@ -219,6 +321,9 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     alignItems: 'center',
     paddingVertical: 16,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.7,
   },
   primaryButtonLabel: {
     color: '#FFFFFF',

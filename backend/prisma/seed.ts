@@ -1692,6 +1692,7 @@ const coursesData: SeedCourse[] = [
 async function main(): Promise<void> {
   const passwordHash = await bcrypt.hash('password123', 10);
 
+  await prisma.emailLoginCode.deleteMany();
   await prisma.progress.deleteMany();
   await prisma.userAchievement.deleteMany();
   await prisma.task.deleteMany();

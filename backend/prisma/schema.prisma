@@ -10,7 +10,7 @@ datasource db {
 model User {
   id        String     @id @default(cuid())
   email     String     @unique
-  password  String
+  password  String?
   xp        Int        @default(0)
   level     Int        @default(1)
   streak    Int        @default(0)
@@ -18,6 +18,19 @@ model User {
   updatedAt DateTime   @updatedAt
   progress  Progress[]
   achievements UserAchievement[]
+}
+
+model EmailLoginCode {
+  id         String   @id @default(cuid())
+  email      String
+  codeHash   String   @unique @map("tokenHash")
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
+  @@map("MagicLinkToken")
 }
 
 model Achievement {

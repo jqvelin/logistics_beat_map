@@ -10,6 +10,8 @@ type AuthContextValue = {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
+  requestEmailCode: (email: string) => Promise<void>;
+  verifyEmailCode: (email: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
@@ -71,6 +73,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
     [applyAuth],
   );
 
+  const requestEmailCode = useCallback(async (email: string) => {
+    await api.requestEmailCode(email);
+  }, []);
+
+  const verifyEmailCode = useCallback(
+    async (email: string, code: string) => {
+      const response = await api.verifyEmailCode(email, code);
+      await applyAuth(response.accessToken, response.user);
+    },
+    [applyAuth],
+  );
+
   const logout = useCallback(async () => {
     await clearStoredToken();
     setToken(null);
@@ -93,10 +107,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
       isLoading,
       login,
       register,
+      requestEmailCode,
+      verifyEmailCode,
       logout,
       refreshUser,
     }),
-    [isLoading, login, logout, refreshUser, register, token, user],
+    [
+      isLoading,
+      login,
+      logout,
+      refreshUser,
+      register,
+      requestEmailCode,
+      token,
+      user,
+      verifyEmailCode,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
