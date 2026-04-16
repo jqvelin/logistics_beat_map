@@ -137,6 +137,12 @@ export type ProgressResponse = {
   xpGainedToday: number;
   overview: ProgressOverview;
   courses: ProgressCourse[];
+  quickPracticeEligible: boolean;
+};
+
+export type QuickPracticeSession = {
+  title: string;
+  tasks: LessonTask[];
 };
 
 export type NextTaskResponse =

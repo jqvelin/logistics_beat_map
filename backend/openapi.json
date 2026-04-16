@@ -188,6 +188,20 @@
         ]
       }
     },
+    "/api/learning/quick-practice": {
+      "get": {
+        "operationId": "LearningController_getQuickPractice",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Learning"
+        ]
+      }
+    },
     "/api/learning/complete-task": {
       "post": {
         "operationId": "LearningController_completeTask",

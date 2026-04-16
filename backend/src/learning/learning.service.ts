@@ -18,6 +18,13 @@ type SanitizedQuizTaskContent = Omit<QuizTaskContent, 'answer'>;
 
 const XP_PER_TASK = 25;
 
+/** At least this many full lessons must be completed. */
+const MIN_COMPLETED_LESSONS_FOR_QUICK_PRACTICE = 2;
+/** Pool: completed quiz tasks the user may revisit. */
+const MIN_COMPLETED_QUIZ_TASKS_FOR_QUICK_PRACTICE = 5;
+/** Questions per quick practice session. */
+const QUICK_PRACTICE_TASK_COUNT = 5;
+
 @Injectable()
 export class LearningService {
   constructor(private readonly prisma: PrismaService) {}
@@ -151,12 +158,58 @@ export class LearningService {
       },
     );
 
+    const completedQuizCount =
+      completedTaskIds.length === 0
+        ? 0
+        : await this.prisma.task.count({
+            where: {
+              type: 'quiz',
+              id: { in: completedTaskIds },
+            },
+          });
+
+    const quickPracticeEligible =
+      overview.completedLessons >= MIN_COMPLETED_LESSONS_FOR_QUICK_PRACTICE &&
+      completedQuizCount >= MIN_COMPLETED_QUIZ_TASKS_FOR_QUICK_PRACTICE;
+
     return {
       completedTaskIds,
       tasksCompletedToday,
       xpGainedToday: tasksCompletedToday * XP_PER_TASK,
       overview,
       courses: coursesProgress,
+      quickPracticeEligible,
+    };
+  }
+
+  async getQuickPracticeSession(userId: string) {
+    const progress = await this.getProgress(userId);
+
+    if (!progress.quickPracticeEligible) {
+      throw new BadRequestException(
+        'Быстрая практика станет доступна после большего числа пройденных уроков и вопросов.',
+      );
+    }
+
+    const quizTasks = await this.prisma.task.findMany({
+      where: {
+        type: 'quiz',
+        id: { in: progress.completedTaskIds },
+      },
+    });
+
+    if (quizTasks.length < QUICK_PRACTICE_TASK_COUNT) {
+      throw new BadRequestException(
+        'Недостаточно пройденных вопросов для подборки быстрой практики.',
+      );
+    }
+
+    const pooled = this.shuffleArray(quizTasks);
+    const picked = pooled.slice(0, QUICK_PRACTICE_TASK_COUNT);
+
+    return {
+      title: 'Быстрая практика',
+      tasks: picked.map((task) => this.sanitizeTask(task)),
     };
   }
 
@@ -381,6 +434,15 @@ export class LearningService {
       date.getUTCDate(),
     );
     return Math.floor(utcDate / 86_400_000);
+  }
+
+  private shuffleArray<T>(items: T[]): T[] {
+    const out = [...items];
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [out[i], out[j]] = [out[j]!, out[i]!];
+    }
+    return out;
   }
 
   private sanitizeTask<T extends { type: string; content: Prisma.JsonValue }>(task: T) {

@@ -7,6 +7,7 @@ import type {
   Lesson,
   NextTaskResponse,
   ProgressResponse,
+  QuickPracticeSession,
   User,
 } from '@/lib/types';
 
@@ -82,6 +83,9 @@ export const api = {
   },
   getProgress(token: string) {
     return request<ProgressResponse>('/learning/progress', { token });
+  },
+  getQuickPracticeSession(token: string) {
+    return request<QuickPracticeSession>('/learning/quick-practice', { token });
   },
   getNextTask(token: string) {
     return request<NextTaskResponse>('/learning/next-task', { token });

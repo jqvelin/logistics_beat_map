@@ -76,6 +76,7 @@ export default function HomeScreen() {
     totalCourses > 0 ? Math.round((completedCourses / totalCourses) * 100) : 0;
   const careerStepIndex = getCareerStepIndexFromCourses(completedCourses, totalCourses);
   const careerMilestone = LOGISTICS_MANAGER_CAREER_MILESTONES[careerStepIndex];
+  const quickPracticeEligible = progress?.quickPracticeEligible ?? false;
 
   if (!loaded && !refreshing) {
     return <LoadingScreen omitBottomSafeArea />;
@@ -227,15 +228,27 @@ export default function HomeScreen() {
                 })}
               </View>
 
-              <Pressable onPress={() => router.push('/practice')}>
+              <Pressable
+                onPress={() => {
+                  if (quickPracticeEligible) {
+                    router.push('/quick-practice');
+                  }
+                }}
+                style={!quickPracticeEligible ? styles.practicePressableDisabled : undefined}>
                 <LinearGradient colors={gradients.practice} style={styles.practiceCard}>
                   <View style={styles.practiceHeader}>
                     <Text style={styles.practiceTitle}>Быстрая практика</Text>
                     <Text style={styles.practiceIcon}>⟳</Text>
                   </View>
-                  <Text style={styles.practiceSubtitle}>Повторите изученный материал</Text>
+                  <Text style={styles.practiceSubtitle}>
+                    {quickPracticeEligible
+                      ? 'Повторите вопросы из уже пройденных уроков'
+                      : 'Завершите больше уроков и тестовых вопросов, чтобы открыть повторение'}
+                  </Text>
                   <View style={styles.practiceButton}>
-                    <Text style={styles.practiceButtonText}>Начать</Text>
+                    <Text style={styles.practiceButtonText}>
+                      {quickPracticeEligible ? 'Начать' : 'Скоро'}
+                    </Text>
                   </View>
                 </LinearGradient>
               </Pressable>
@@ -487,6 +500,9 @@ const styles = StyleSheet.create({
   },
   modulePercentLocked: {
     color: palette.textSoft,
+  },
+  practicePressableDisabled: {
+    opacity: 0.72,
   },
   practiceCard: {
     borderRadius: radii.lg,

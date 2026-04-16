@@ -35,6 +35,11 @@ export class LearningController {
     return task;
   }
 
+  @Get('quick-practice')
+  getQuickPractice(@CurrentUser() user: { sub: string }) {
+    return this.learningService.getQuickPracticeSession(user.sub);
+  }
+
   @Post('complete-task')
   @HttpCode(200)
   completeTask(
