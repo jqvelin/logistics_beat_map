@@ -86,6 +86,7 @@ export default function ProgressScreen() {
             <Text style={styles.courseTitle}>{course.title}</Text>
             <Text style={styles.courseMeta}>
               {course.completedModules}/{course.totalModules} модулей ·{' '}
+              {course.completedLessons}/{course.totalLessons} уроков ·{' '}
               {course.completedTasks}/{course.totalTasks} заданий
             </Text>
           </AppCard>

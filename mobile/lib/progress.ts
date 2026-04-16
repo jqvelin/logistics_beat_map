@@ -1,4 +1,10 @@
-import type { CourseSummary, ProgressModule, ProgressResponse } from '@/lib/types';
+import type {
+  CourseSummary,
+  ProgressCourse,
+  ProgressLesson,
+  ProgressModule,
+  ProgressResponse,
+} from '@/lib/types';
 
 export type HomeModuleRow = {
   moduleId: string;
@@ -79,6 +85,33 @@ export function findModuleByLessonId(
       if (module.lessons.some((lesson) => lesson.lessonId === lessonId)) {
         return module;
       }
+    }
+  }
+
+  return null;
+}
+
+export function getCourseProgress(
+  progress: ProgressResponse | null,
+  courseId: string,
+): ProgressCourse | null {
+  return progress?.courses.find((c) => c.courseId === courseId) ?? null;
+}
+
+export function getLessonProgress(
+  progress: ProgressResponse | null,
+  courseId: string,
+  lessonId: string,
+): ProgressLesson | null {
+  const course = getCourseProgress(progress, courseId);
+  if (!course) {
+    return null;
+  }
+
+  for (const module of course.modules) {
+    const lesson = module.lessons.find((l) => l.lessonId === lessonId);
+    if (lesson) {
+      return lesson;
     }
   }
 

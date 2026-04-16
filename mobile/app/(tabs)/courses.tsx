@@ -1,23 +1,45 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { router } from 'expo-router';
 import { AppCard } from '@/components/app-card';
 import { LoadingScreen } from '@/components/loading-screen';
 import { Screen } from '@/components/screen';
-import { palette } from '@/constants/theme';
+import { palette, radii } from '@/constants/theme';
+import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
-import type { CourseSummary } from '@/lib/types';
+import { getCourseProgress } from '@/lib/progress';
+import type { CourseSummary, ProgressResponse } from '@/lib/types';
 
 export default function CoursesScreen() {
+  const { token } = useAuth();
   const [courses, setCourses] = useState<CourseSummary[]>([]);
+  const [progress, setProgress] = useState<ProgressResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const response = await api.getCourses();
-    setCourses(response);
+    if (token) {
+      const [coursesResponse, progressResponse] = await Promise.all([
+        api.getCourses(),
+        api.getProgress(token),
+      ]);
+      setCourses(coursesResponse);
+      setProgress(progressResponse);
+    } else {
+      const coursesResponse = await api.getCourses();
+      setCourses(coursesResponse);
+      setProgress(null);
+    }
+
     setLoading(false);
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     void load();
@@ -33,6 +55,20 @@ export default function CoursesScreen() {
     }
   }, [load]);
 
+  const courseRows = useMemo(() => {
+    return courses.map((course) => {
+      const p = getCourseProgress(progress, course.id);
+      const ratio =
+        p && p.totalTasks > 0
+          ? p.completedTasks / p.totalTasks
+          : p && p.totalLessons > 0
+            ? p.completedLessons / p.totalLessons
+            : 0;
+
+      return { course, progress: p, ratio };
+    });
+  }, [courses, progress]);
+
   if (loading) {
     return <LoadingScreen label="Загружаем список курсов..." omitBottomSafeArea />;
   }
@@ -45,13 +81,13 @@ export default function CoursesScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.purple} />
         }>
         <View style={styles.header}>
-          <Text style={styles.title}>Уроки</Text>
+          <Text style={styles.title}>Курсы</Text>
           <Text style={styles.subtitle}>
-            Выберите курс и перейдите к урокам, задачам и практическим сценариям.
+            Выберите курс: внутри — модули и уроки с заданиями и практикой.
           </Text>
         </View>
 
-        {courses.map((course) => (
+        {courseRows.map(({ course, progress: courseProgress, ratio }) => (
           <Pressable
             key={course.id}
             onPress={() =>
@@ -69,6 +105,22 @@ export default function CoursesScreen() {
                 {course.modules.length} модулей ·{' '}
                 {course.modules.reduce((sum, module) => sum + module._count.lessons, 0)} уроков
               </Text>
+              {courseProgress ? (
+                <View style={styles.progressBlock}>
+                  <View style={styles.progressLabels}>
+                    <Text style={styles.progressCaption}>
+                      {courseProgress.completedModules}/{courseProgress.totalModules} модулей ·{' '}
+                      {courseProgress.completedLessons}/{courseProgress.totalLessons} уроков
+                    </Text>
+                    <Text style={styles.progressPercent}>{Math.round(ratio * 100)}%</Text>
+                  </View>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${Math.max(ratio * 100, 8)}%` }]} />
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.progressHint}>Войдите, чтобы видеть личный прогресс.</Text>
+              )}
             </AppCard>
           </Pressable>
         ))}
@@ -118,5 +170,42 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: palette.textMuted,
     fontSize: 14,
+  },
+  progressBlock: {
+    marginTop: 14,
+    gap: 8,
+  },
+  progressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressCaption: {
+    flex: 1,
+    color: palette.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+    marginRight: 8,
+  },
+  progressPercent: {
+    color: palette.purple,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: radii.pill,
+    backgroundColor: '#E8ECF3',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: radii.pill,
+    backgroundColor: palette.purple,
+  },
+  progressHint: {
+    marginTop: 12,
+    color: palette.textMuted,
+    fontSize: 13,
   },
 });

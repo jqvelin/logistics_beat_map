@@ -7,6 +7,6 @@ export class CompleteTaskDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  @Max(2)
+  @Max(31)
   selectedOptionIndex?: number;
 }

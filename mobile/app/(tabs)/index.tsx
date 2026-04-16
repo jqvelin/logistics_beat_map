@@ -96,7 +96,7 @@ export default function HomeScreen() {
             <View style={styles.goalRow}>
               <Text style={styles.goalTitle}>Дневная цель</Text>
               <Text style={styles.goalValue}>
-                {tasksToday}/{Math.max(tasksToday, 5)} уроков
+                {tasksToday}/{Math.max(tasksToday, 5)} заданий
               </Text>
             </View>
             <View style={styles.progressTrack}>

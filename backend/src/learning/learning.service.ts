@@ -284,6 +284,15 @@ export class LearningService {
     }
 
     const content = task.content as unknown as QuizTaskContent;
+    const optionCount = Array.isArray(content.options) ? content.options.length : 0;
+
+    if (
+      optionCount === 0 ||
+      dto.selectedOptionIndex < 0 ||
+      dto.selectedOptionIndex >= optionCount
+    ) {
+      throw new BadRequestException('Некорректный номер варианта ответа');
+    }
 
     if (content.answer !== dto.selectedOptionIndex) {
       throw new BadRequestException('Ответ неверный');

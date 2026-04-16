@@ -20,40 +20,33 @@ import type {
   CompleteTaskResponse,
   Lesson,
   LessonTask,
-  NextTaskResponse,
   ProgressResponse,
   QuizTaskContent,
   SimulationTaskContent,
 } from '@/lib/types';
-
-function isTaskEnvelope(task: NextTaskResponse): task is Exclude<NextTaskResponse, { task: null }> {
-  return !('task' in task);
-}
 
 export default function LessonScreen() {
   const { lessonId } = useLocalSearchParams<{ lessonId: string }>();
   const { token, refreshUser } = useAuth();
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [progress, setProgress] = useState<ProgressResponse | null>(null);
-  const [nextTask, setNextTask] = useState<NextTaskResponse | null>(null);
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [finishAwardedXp, setFinishAwardedXp] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (!lessonId || !token) {
       return;
     }
 
-    const [lessonResponse, progressResponse, nextTaskResponse] = await Promise.all([
+    const [lessonResponse, progressResponse] = await Promise.all([
       api.getLesson(lessonId),
       api.getProgress(token),
-      api.getNextTask(token),
     ]);
 
     setLesson(lessonResponse);
     setProgress(progressResponse);
-    setNextTask(nextTaskResponse);
     setSelectedOptionIndex(null);
     setLoading(false);
   }, [lessonId, token]);
@@ -62,21 +55,30 @@ export default function LessonScreen() {
     void load();
   }, [load]);
 
-  const currentTask = useMemo<LessonTask | null>(() => {
-    if (!nextTask || !isTaskEnvelope(nextTask)) {
-      return null;
-    }
-
-    return nextTask.lesson.id === lessonId ? nextTask : lesson?.tasks[0] ?? null;
-  }, [lesson?.tasks, lessonId, nextTask]);
+  useEffect(() => {
+    setFinishAwardedXp(null);
+  }, [lessonId]);
 
   const completedTaskIds = progress?.completedTaskIds ?? [];
   const completedTasks = lesson?.tasks.filter((task) => completedTaskIds.includes(task.id)).length ?? 0;
   const totalTasks = lesson?.tasks.length ?? 0;
   const progressRatio = totalTasks > 0 ? completedTasks / totalTasks : 0;
 
+  const currentTask = useMemo<LessonTask | null>(() => {
+    if (!lesson) {
+      return null;
+    }
+
+    return lesson.tasks.find((task) => !completedTaskIds.includes(task.id)) ?? null;
+  }, [lesson, completedTaskIds]);
+
+  const lessonComplete = totalTasks > 0 && completedTasks >= totalTasks;
+  const taskOrdinal = currentTask
+    ? lesson!.tasks.findIndex((t) => t.id === currentTask.id) + 1
+    : totalTasks;
+
   const submitTask = async () => {
-    if (!token || !currentTask) {
+    if (!token || !currentTask || !lesson) {
       return;
     }
 
@@ -100,12 +102,19 @@ export default function LessonScreen() {
       await refreshUser();
       await load();
 
-      Alert.alert(
-        'Задание зачтено',
-        response.awardedXp > 0
-          ? `Вы получили +${response.awardedXp} XP.`
-          : 'Это задание уже было пройдено раньше.',
-      );
+      const nextCompletedIds = [...completedTaskIds, currentTask.id];
+      const allTasksDone = lesson.tasks.every((t) => nextCompletedIds.includes(t.id));
+
+      if (allTasksDone) {
+        setFinishAwardedXp(response.awardedXp);
+      } else {
+        Alert.alert(
+          'Задание зачтено',
+          response.awardedXp > 0
+            ? `Вы получили +${response.awardedXp} XP.`
+            : 'Это задание уже было пройдено раньше.',
+        );
+      }
     } catch (error) {
       Alert.alert(
         'Не удалось отправить ответ',
@@ -117,7 +126,7 @@ export default function LessonScreen() {
   };
 
   if (loading || !lesson) {
-    return <LoadingScreen label="Открываем урок..." />;
+    return <LoadingScreen label="Открываем материал..." />;
   }
 
   const quizContent =
@@ -140,7 +149,14 @@ export default function LessonScreen() {
             </View>
           </View>
 
-          <Text style={styles.heroTitle}>Уровень {Math.max(completedTasks + 1, 1)}: {lesson.title}</Text>
+          <Text style={styles.heroTitle}>{lesson.title}</Text>
+          {!lessonComplete && currentTask ? (
+            <Text style={styles.heroSubtitle}>
+              Задание {taskOrdinal} из {totalTasks}
+            </Text>
+          ) : lessonComplete ? (
+            <Text style={styles.heroSubtitle}>Урок пройден</Text>
+          ) : null}
 
           <View style={styles.heroProgressCard}>
             <View style={styles.heroProgressHeader}>
@@ -155,7 +171,23 @@ export default function LessonScreen() {
         </LinearGradient>
 
         <View style={styles.body}>
-          {currentTask ? (
+          {lessonComplete ? (
+            <AppCard>
+              <Text style={styles.completeEmoji}>🎉</Text>
+              <Text style={styles.completeTitle}>Урок завершён!</Text>
+              <Text style={styles.completeDescription}>
+                Вы ответили на все задания этого урока. Можете вернуться к списку курсов или на главную.
+              </Text>
+              {finishAwardedXp != null && finishAwardedXp > 0 ? (
+                <Text style={styles.completeXp}>+{finishAwardedXp} XP</Text>
+              ) : null}
+              <Pressable
+                style={styles.homeButton}
+                onPress={() => router.replace('/(tabs)')}>
+                <Text style={styles.homeButtonText}>На главную</Text>
+              </Pressable>
+            </AppCard>
+          ) : currentTask ? (
             <AppCard>
               <Text style={styles.taskLabel}>
                 {currentTask.type === 'quiz' ? 'Текущий вопрос' : 'Практический сценарий'}
@@ -165,23 +197,29 @@ export default function LessonScreen() {
                 <>
                   <Text style={styles.taskTitle}>{quizContent.question}</Text>
                   <View style={styles.optionsList}>
-                    {quizContent.options.map((option, index) => (
-                      <Pressable
-                        key={`${currentTask.id}-${index}`}
-                        style={[
-                          styles.option,
-                          selectedOptionIndex === index && styles.optionSelected,
-                        ]}
-                        onPress={() => setSelectedOptionIndex(index)}>
-                        <Text
-                          style={[
-                            styles.optionLabel,
-                            selectedOptionIndex === index && styles.optionLabelSelected,
-                          ]}>
-                          {option}
-                        </Text>
-                      </Pressable>
-                    ))}
+                    {quizContent.options.map((option, index) => {
+                      const selected = selectedOptionIndex === index;
+                      return (
+                        <Pressable
+                          key={`${currentTask.id}-${index}`}
+                          style={[styles.option, selected && styles.optionSelected]}
+                          onPress={() => setSelectedOptionIndex(index)}
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected }}>
+                          <View
+                            style={[styles.radioOuter, selected && styles.radioOuterSelected]}>
+                            {selected ? <View style={styles.radioInner} /> : null}
+                          </View>
+                          <Text
+                            style={[
+                              styles.optionLabel,
+                              selected && styles.optionLabelSelected,
+                            ]}>
+                            {option}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
                 </>
               ) : simulationContent ? (
@@ -200,19 +238,21 @@ export default function LessonScreen() {
             </AppCard>
           ) : (
             <EmptyState
-              title="Все задания по уроку уже закрыты"
-              description="Можете вернуться в список уроков или перейти в быструю практику на главной."
+              title="Нет заданий в этом уроке"
+              description="Сообщите, если контент не загрузился."
             />
           )}
 
-          <Pressable
-            style={[styles.primaryButton, submitting && styles.primaryButtonDisabled]}
-            onPress={() => void submitTask()}
-            disabled={!currentTask || submitting}>
-            <Text style={styles.primaryButtonText}>
-              {submitting ? 'Проверяем...' : currentTask ? 'Далее →' : 'Урок завершён'}
-            </Text>
-          </Pressable>
+          {!lessonComplete ? (
+            <Pressable
+              style={[styles.primaryButton, submitting && styles.primaryButtonDisabled]}
+              onPress={() => void submitTask()}
+              disabled={!currentTask || submitting}>
+              <Text style={styles.primaryButtonText}>
+                {submitting ? 'Проверяем...' : currentTask ? 'Далее →' : 'Подождите...'}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
     </Screen>
@@ -254,6 +294,49 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     lineHeight: 36,
+  },
+  heroSubtitle: {
+    color: '#DDE8FF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 10,
+  },
+  completeEmoji: {
+    fontSize: 48,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  completeTitle: {
+    color: palette.text,
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  completeDescription: {
+    color: palette.textMuted,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  completeXp: {
+    color: palette.purple,
+    fontSize: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  homeButton: {
+    backgroundColor: palette.purple,
+    borderRadius: radii.pill,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  homeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '800',
   },
   heroProgressCard: {
     marginTop: 22,
@@ -312,6 +395,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   option: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 14,
     borderRadius: radii.md,
@@ -319,11 +405,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.border,
   },
+  radioOuter: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: palette.border,
+    marginTop: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOuterSelected: {
+    borderColor: palette.purple,
+  },
+  radioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: palette.purple,
+  },
   optionSelected: {
     borderColor: palette.purple,
     backgroundColor: '#F0EEFF',
   },
   optionLabel: {
+    flex: 1,
     color: palette.text,
     fontSize: 15,
     lineHeight: 22,
