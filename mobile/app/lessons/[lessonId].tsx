@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,7 +8,10 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { AppCard } from '@/components/app-card';
+import { BottomConfetti } from '@/components/bottom-confetti';
 import { EmptyState } from '@/components/empty-state';
 import { LoadingScreen } from '@/components/loading-screen';
 import { Screen } from '@/components/screen';
@@ -25,15 +27,39 @@ import type {
   SimulationTaskContent,
 } from '@/lib/types';
 
+const FEEDBACK_SETTLE_MS = 1000;
+const PICK_HINT_MS = 1200;
+
+type CtaPhase =
+  | 'idle'
+  | 'busy'
+  | 'correct'
+  | 'wrong'
+  | 'pick'
+  | 'network';
+
 export default function LessonScreen() {
   const { lessonId } = useLocalSearchParams<{ lessonId: string }>();
   const { token, refreshUser } = useAuth();
+  const insets = useSafeAreaInsets();
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [progress, setProgress] = useState<ProgressResponse | null>(null);
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [ctaPhase, setCtaPhase] = useState<CtaPhase>('idle');
+  const [ctaXp, setCtaXp] = useState(0);
+  const [ctaNetworkMessage, setCtaNetworkMessage] = useState('');
   const [finishAwardedXp, setFinishAwardedXp] = useState<number | null>(null);
+  const ctaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearCtaTimer = useCallback(() => {
+    if (ctaTimerRef.current) {
+      clearTimeout(ctaTimerRef.current);
+      ctaTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => clearCtaTimer(), [clearCtaTimer]);
 
   const load = useCallback(async () => {
     if (!lessonId || !token) {
@@ -59,7 +85,10 @@ export default function LessonScreen() {
     setFinishAwardedXp(null);
   }, [lessonId]);
 
-  const completedTaskIds = progress?.completedTaskIds ?? [];
+  const completedTaskIds = useMemo(
+    () => progress?.completedTaskIds ?? [],
+    [progress],
+  );
   const completedTasks = lesson?.tasks.filter((task) => completedTaskIds.includes(task.id)).length ?? 0;
   const totalTasks = lesson?.tasks.length ?? 0;
   const progressRatio = totalTasks > 0 ? completedTasks / totalTasks : 0;
@@ -77,57 +106,87 @@ export default function LessonScreen() {
     ? lesson!.tasks.findIndex((t) => t.id === currentTask.id) + 1
     : totalTasks;
 
+  const finalizeAfterCorrect = useCallback(
+    async (response: CompleteTaskResponse, completedTaskId: string) => {
+      if (!lesson || !token) {
+        return;
+      }
+
+      const nextCompletedIds = [...completedTaskIds, completedTaskId];
+      const allTasksDone = lesson.tasks.every((t) => nextCompletedIds.includes(t.id));
+
+      await refreshUser();
+      await load();
+      setSelectedOptionIndex(null);
+      setCtaPhase('idle');
+      setCtaXp(0);
+
+      if (allTasksDone) {
+        setFinishAwardedXp(response.awardedXp);
+      }
+    },
+    [lesson, token, refreshUser, load, completedTaskIds],
+  );
+
   const submitTask = async () => {
     if (!token || !currentTask || !lesson) {
       return;
     }
 
-    setSubmitting(true);
+    if (ctaPhase === 'busy' || ctaPhase === 'correct') {
+      return;
+    }
+
+    clearCtaTimer();
+
+    if (currentTask.type === 'quiz' && selectedOptionIndex === null) {
+      setCtaPhase('pick');
+      ctaTimerRef.current = setTimeout(() => {
+        setCtaPhase('idle');
+        ctaTimerRef.current = null;
+      }, PICK_HINT_MS);
+      return;
+    }
+
+    setCtaPhase('busy');
 
     try {
       let response: CompleteTaskResponse;
 
       if (currentTask.type === 'quiz') {
-        if (selectedOptionIndex === null) {
-          Alert.alert('Выберите вариант', 'Перед отправкой нужно выбрать один из ответов.');
-          setSubmitting(false);
-          return;
-        }
-
-        response = await api.completeTask(token, currentTask.id, selectedOptionIndex);
+        response = await api.completeTask(token, currentTask.id, selectedOptionIndex!);
       } else {
         response = await api.completeTask(token, currentTask.id);
       }
 
-      await refreshUser();
-      await load();
+      setCtaXp(response.awardedXp);
+      setCtaPhase('correct');
 
-      const nextCompletedIds = [...completedTaskIds, currentTask.id];
-      const allTasksDone = lesson.tasks.every((t) => nextCompletedIds.includes(t.id));
-
-      if (allTasksDone) {
-        setFinishAwardedXp(response.awardedXp);
-      } else {
-        Alert.alert(
-          'Задание зачтено',
-          response.awardedXp > 0
-            ? `Вы получили +${response.awardedXp} XP.`
-            : 'Это задание уже было пройдено раньше.',
-        );
-      }
+      ctaTimerRef.current = setTimeout(() => {
+        ctaTimerRef.current = null;
+        void finalizeAfterCorrect(response, currentTask.id);
+      }, FEEDBACK_SETTLE_MS);
     } catch (error) {
-      Alert.alert(
-        'Не удалось отправить ответ',
-        error instanceof ApiError ? error.message : 'Попробуйте ещё раз.',
-      );
-    } finally {
-      setSubmitting(false);
+      if (error instanceof ApiError && error.status === 400) {
+        setCtaPhase('wrong');
+        ctaTimerRef.current = setTimeout(() => {
+          setCtaPhase('idle');
+          ctaTimerRef.current = null;
+        }, FEEDBACK_SETTLE_MS);
+        return;
+      }
+
+      const message =
+        error instanceof ApiError ? error.message : 'Попробуйте ещё раз.';
+      setCtaNetworkMessage(message);
+      setCtaPhase('network');
+      ctaTimerRef.current = setTimeout(() => {
+        setCtaPhase('idle');
+        setCtaNetworkMessage('');
+        ctaTimerRef.current = null;
+      }, FEEDBACK_SETTLE_MS + 400);
     }
   };
-
-  if (loading || !lesson) {
-    return <LoadingScreen label="Открываем материал..." />;
-  }
 
   const quizContent =
     currentTask?.type === 'quiz' ? (currentTask.content as QuizTaskContent) : null;
@@ -136,143 +195,221 @@ export default function LessonScreen() {
       ? (currentTask.content as SimulationTaskContent)
       : null;
 
+  const ctaLabel = useMemo(() => {
+    switch (ctaPhase) {
+      case 'busy':
+        return 'Проверяем...';
+      case 'correct':
+        return ctaXp > 0 ? `Правильно! +${ctaXp} XP` : 'Правильно!';
+      case 'wrong':
+        return 'Попробуй снова!';
+      case 'pick':
+        return 'Выберите вариант';
+      case 'network':
+        return ctaNetworkMessage.length > 40
+          ? `${ctaNetworkMessage.slice(0, 37)}…`
+          : ctaNetworkMessage;
+      default:
+        return currentTask ? 'Далее →' : 'Подождите...';
+    }
+  }, [ctaPhase, ctaXp, ctaNetworkMessage, currentTask]);
+
+  const ctaKey = `${ctaPhase}-${ctaLabel}`;
+
+  const ctaBackgroundStyle = useMemo(() => {
+    switch (ctaPhase) {
+      case 'wrong':
+        return styles.primaryButtonDanger;
+      case 'pick':
+        return styles.primaryButtonWarning;
+      case 'network':
+        return styles.primaryButtonWarning;
+      case 'busy':
+      case 'correct':
+        return styles.primaryButton;
+      default:
+        return styles.primaryButton;
+    }
+  }, [ctaPhase]);
+
+  const ctaDisabled =
+    !currentTask || ctaPhase === 'busy' || ctaPhase === 'correct';
+
+  if (loading || !lesson) {
+    return <LoadingScreen label="Открываем материал..." />;
+  }
+
   return (
     <Screen backgroundColor={palette.background} padded={false}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <LinearGradient colors={gradients.header} style={styles.hero}>
-          <View style={styles.heroTop}>
-            <Pressable onPress={() => router.back()}>
-              <Text style={styles.topAction}>⚙</Text>
-            </Pressable>
-            <View style={styles.pointsBadge}>
-              <Text style={styles.pointsText}>{completedTasks * 25}</Text>
-            </View>
-          </View>
-
-          <Text style={styles.heroTitle}>{lesson.title}</Text>
-          {!lessonComplete && currentTask ? (
-            <Text style={styles.heroSubtitle}>
-              Задание {taskOrdinal} из {totalTasks}
-            </Text>
-          ) : lessonComplete ? (
-            <Text style={styles.heroSubtitle}>Урок пройден</Text>
-          ) : null}
-
-          <View style={styles.heroProgressCard}>
-            <View style={styles.heroProgressHeader}>
-              <Text style={styles.heroProgressLabel}>Старт</Text>
-              <Text style={styles.heroProgressLabel}>Знаю всё</Text>
-            </View>
-            <View style={styles.heroTrack}>
-              <View style={[styles.heroFill, { width: `${Math.max(progressRatio * 100, 10)}%` }]} />
-            </View>
-            <Text style={styles.heroProgressText}>Прогресс {Math.round(progressRatio * 100)}%</Text>
-          </View>
-        </LinearGradient>
-
-        <View style={styles.body}>
-          {lessonComplete ? (
-            <AppCard>
-              <Text style={styles.completeEmoji}>🎉</Text>
-              <Text style={styles.completeTitle}>Урок завершён!</Text>
-              <Text style={styles.completeDescription}>
-                Вы ответили на все задания этого урока. Можете вернуться к списку курсов или на главную.
-              </Text>
-              {finishAwardedXp != null && finishAwardedXp > 0 ? (
-                <Text style={styles.completeXp}>+{finishAwardedXp} XP</Text>
-              ) : null}
-              <Pressable
-                style={styles.homeButton}
-                onPress={() => router.replace('/(tabs)')}>
-                <Text style={styles.homeButtonText}>На главную</Text>
+      <View style={styles.flexMain}>
+        <ScrollView
+          style={styles.flexScroll}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled">
+          <LinearGradient colors={gradients.header} style={styles.hero}>
+            <View style={styles.heroTop}>
+              <Pressable onPress={() => router.back()} hitSlop={12}>
+                <Text style={styles.topAction}>⚙</Text>
               </Pressable>
-            </AppCard>
-          ) : currentTask ? (
-            <AppCard>
-              <Text style={styles.taskLabel}>
-                {currentTask.type === 'quiz' ? 'Текущий вопрос' : 'Практический сценарий'}
+              <View style={styles.pointsBadge}>
+                <Text style={styles.pointsText}>{completedTasks * 25}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.heroTitleCompact} numberOfLines={2}>
+              {lesson.title}
+            </Text>
+
+            {!lessonComplete && currentTask ? (
+              <Text style={styles.heroSubtitle} numberOfLines={1}>
+                {`Задание ${taskOrdinal} из ${totalTasks} · ${Math.round(progressRatio * 100)}%`}
               </Text>
+            ) : lessonComplete ? (
+              <Text style={styles.heroSubtitle}>Урок пройден</Text>
+            ) : null}
 
-              {quizContent ? (
-                <>
-                  <Text style={styles.taskTitle}>{quizContent.question}</Text>
-                  <View style={styles.optionsList}>
-                    {quizContent.options.map((option, index) => {
-                      const selected = selectedOptionIndex === index;
-                      return (
-                        <Pressable
-                          key={`${currentTask.id}-${index}`}
-                          style={[styles.option, selected && styles.optionSelected]}
-                          onPress={() => setSelectedOptionIndex(index)}
-                          accessibilityRole="radio"
-                          accessibilityState={{ selected }}>
-                          <View
-                            style={[styles.radioOuter, selected && styles.radioOuterSelected]}>
-                            {selected ? <View style={styles.radioInner} /> : null}
-                          </View>
-                          <Text
-                            style={[
-                              styles.optionLabel,
-                              selected && styles.optionLabelSelected,
-                            ]}>
-                            {option}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </>
-              ) : simulationContent ? (
-                <>
-                  <Text style={styles.taskTitle}>{simulationContent.scenario}</Text>
-                  <View style={styles.steps}>
-                    {simulationContent.steps.map((step) => (
-                      <View key={step} style={styles.stepRow}>
-                        <Text style={styles.stepBullet}>•</Text>
-                        <Text style={styles.stepText}>{step}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </>
-              ) : null}
-            </AppCard>
-          ) : (
-            <EmptyState
-              title="Нет заданий в этом уроке"
-              description="Сообщите, если контент не загрузился."
-            />
-          )}
+            <View style={styles.heroTrack}>
+              <View style={[styles.heroFill, { width: `${Math.max(progressRatio * 100, 8)}%` }]} />
+            </View>
+          </LinearGradient>
 
-          {!lessonComplete ? (
+          <View style={styles.body}>
+            {lessonComplete ? (
+              <AppCard>
+                <Text style={styles.completeEmoji}>🎉</Text>
+                <Text style={styles.completeTitle}>Урок завершён!</Text>
+                <Text style={styles.completeDescription}>
+                  Вы ответили на все задания этого урока. Можете вернуться к списку курсов или на главную.
+                </Text>
+                {finishAwardedXp != null && finishAwardedXp > 0 ? (
+                  <Text style={styles.completeXp}>+{finishAwardedXp} XP</Text>
+                ) : null}
+                <Pressable
+                  style={styles.homeButton}
+                  onPress={() => router.replace('/(tabs)')}>
+                  <Text style={styles.homeButtonText}>На главную</Text>
+                </Pressable>
+              </AppCard>
+            ) : currentTask ? (
+              <AppCard>
+                <Text style={styles.taskLabel}>
+                  {currentTask.type === 'quiz' ? 'Текущий вопрос' : 'Практический сценарий'}
+                </Text>
+
+                {quizContent ? (
+                  <>
+                    <Text style={styles.taskTitle}>{quizContent.question}</Text>
+                    <View style={styles.optionsList}>
+                      {quizContent.options.map((option, index) => {
+                        const selected = selectedOptionIndex === index;
+                        return (
+                          <Pressable
+                            key={`${currentTask.id}-${index}`}
+                            style={[styles.option, selected && styles.optionSelected]}
+                            onPress={() => setSelectedOptionIndex(index)}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected }}>
+                            <View
+                              style={[styles.radioOuter, selected && styles.radioOuterSelected]}>
+                              {selected ? <View style={styles.radioInner} /> : null}
+                            </View>
+                            <Text
+                              style={[
+                                styles.optionLabel,
+                                selected && styles.optionLabelSelected,
+                              ]}>
+                              {option}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </>
+                ) : simulationContent ? (
+                  <>
+                    <Text style={styles.taskTitle}>{simulationContent.scenario}</Text>
+                    <View style={styles.steps}>
+                      {simulationContent.steps.map((step) => (
+                        <View key={step} style={styles.stepRow}>
+                          <Text style={styles.stepBullet}>•</Text>
+                          <Text style={styles.stepText}>{step}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </>
+                ) : null}
+              </AppCard>
+            ) : (
+              <EmptyState
+                title="Нет заданий в этом уроке"
+                description="Сообщите, если контент не загрузился."
+              />
+            )}
+          </View>
+        </ScrollView>
+
+        {ctaPhase === 'correct' && !lessonComplete ? <BottomConfetti /> : null}
+
+        {!lessonComplete ? (
+          <View
+            style={[
+              styles.ctaBar,
+              {
+                paddingBottom: Math.max(insets.bottom, 12),
+                borderTopColor: palette.border,
+                zIndex: 5,
+              },
+            ]}>
             <Pressable
-              style={[styles.primaryButton, submitting && styles.primaryButtonDisabled]}
+              style={[
+                ctaBackgroundStyle,
+                ctaDisabled && styles.primaryButtonDisabled,
+              ]}
               onPress={() => void submitTask()}
-              disabled={!currentTask || submitting}>
-              <Text style={styles.primaryButtonText}>
-                {submitting ? 'Проверяем...' : currentTask ? 'Далее →' : 'Подождите...'}
-              </Text>
+              disabled={ctaDisabled}>
+              <Animated.Text
+                key={ctaKey}
+                entering={FadeIn.duration(200)}
+                exiting={FadeOut.duration(140)}
+                style={styles.primaryButtonText}>
+                {ctaLabel}
+              </Animated.Text>
             </Pressable>
-          ) : null}
-        </View>
-      </ScrollView>
+          </View>
+        ) : null}
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  flexMain: {
+    flex: 1,
+  },
+  flexScroll: {
+    flex: 1,
+  },
   content: {
-    paddingBottom: 28,
+    paddingBottom: 16,
+    flexGrow: 1,
   },
   hero: {
-    paddingTop: 16,
-    paddingHorizontal: 20,
-    paddingBottom: 28,
+    paddingTop: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
   },
   heroTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 8,
+  },
+  heroTitleCompact: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 24,
+    marginBottom: 2,
   },
   topAction: {
     color: '#FFFFFF',
@@ -281,25 +418,19 @@ const styles = StyleSheet.create({
   pointsBadge: {
     backgroundColor: '#FF7F2E',
     borderRadius: radii.pill,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   pointsText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '800',
-  },
-  heroTitle: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '800',
-    lineHeight: 36,
   },
   heroSubtitle: {
     color: '#DDE8FF',
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 10,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 6,
   },
   completeEmoji: {
     fontSize: 48,
@@ -338,44 +469,22 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
   },
-  heroProgressCard: {
-    marginTop: 22,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: radii.lg,
-    padding: 16,
-  },
-  heroProgressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  heroProgressLabel: {
-    color: '#DDE8FF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
   heroTrack: {
-    height: 10,
+    height: 5,
     borderRadius: radii.pill,
     backgroundColor: 'rgba(255,255,255,0.2)',
     overflow: 'hidden',
-    marginTop: 12,
+    marginTop: 6,
   },
   heroFill: {
     height: '100%',
     borderRadius: radii.pill,
     backgroundColor: '#F56D19',
   },
-  heroProgressText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 12,
-    textAlign: 'center',
-  },
   body: {
     paddingHorizontal: 20,
-    paddingTop: 20,
-    gap: 18,
+    paddingTop: 16,
+    gap: 0,
   },
   taskLabel: {
     color: palette.purple,
@@ -436,7 +545,6 @@ const styles = StyleSheet.create({
   },
   optionLabelSelected: {
     color: palette.purple,
-    fontWeight: '700',
   },
   steps: {
     marginTop: 14,
@@ -460,12 +568,35 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: '#17A34A',
     borderRadius: radii.pill,
-    paddingVertical: 18,
+    paddingVertical: 16,
     alignItems: 'center',
-    marginTop: 4,
+    justifyContent: 'center',
+    minHeight: 52,
+  },
+  primaryButtonDanger: {
+    backgroundColor: '#DC2626',
+    borderRadius: radii.pill,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+  },
+  primaryButtonWarning: {
+    backgroundColor: '#CA8A04',
+    borderRadius: radii.pill,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
   },
   primaryButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.75,
+  },
+  ctaBar: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    backgroundColor: palette.background,
   },
   primaryButtonText: {
     color: '#FFFFFF',

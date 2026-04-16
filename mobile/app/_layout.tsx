@@ -56,6 +56,7 @@ function RootNavigator() {
       <Stack.Screen name="lessons/[lessonId]" />
       <Stack.Screen name="courses/[courseId]" />
       <Stack.Screen name="practice" />
+      <Stack.Screen name="career-path" />
     </Stack>
   );
 }

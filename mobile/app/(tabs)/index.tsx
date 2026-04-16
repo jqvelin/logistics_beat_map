@@ -15,6 +15,10 @@ import { Screen } from '@/components/screen';
 import { gradients, palette, radii, spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
+import {
+  LOGISTICS_MANAGER_CAREER_MILESTONES,
+  getCareerStepIndexFromCourses,
+} from '@/lib/career-path';
 import { buildHomeModules } from '@/lib/progress';
 import type { CourseSummary, ProgressResponse } from '@/lib/types';
 
@@ -66,6 +70,12 @@ export default function HomeScreen() {
   const xpToday = progress?.xpGainedToday ?? 0;
   const completedModules = progress?.overview.completedModules ?? 0;
   const totalModules = progress?.overview.totalModules ?? 0;
+  const completedCourses = progress?.overview.completedCourses ?? 0;
+  const totalCourses = progress?.overview.totalCourses ?? 0;
+  const courseCompletionPct =
+    totalCourses > 0 ? Math.round((completedCourses / totalCourses) * 100) : 0;
+  const careerStepIndex = getCareerStepIndexFromCourses(completedCourses, totalCourses);
+  const careerMilestone = LOGISTICS_MANAGER_CAREER_MILESTONES[careerStepIndex];
 
   if (!loaded && !refreshing) {
     return <LoadingScreen omitBottomSafeArea />;
@@ -230,22 +240,27 @@ export default function HomeScreen() {
                 </LinearGradient>
               </Pressable>
 
-              <AppCard>
-                <View style={styles.careerHeader}>
-                  <Text style={styles.sectionTitle}>Карьерный путь</Text>
-                  <Text style={styles.linkText}>Развернуть</Text>
-                </View>
-                <View style={styles.careerCard}>
-                  <View style={styles.careerBadge}>
-                    <Text style={styles.careerBadgeText}>👤</Text>
+              <Pressable onPress={() => router.push('/career-path')} style={styles.careerPressable}>
+                <AppCard>
+                  <View style={styles.careerHeader}>
+                    <Text style={styles.sectionTitle}>Карьерный путь</Text>
+                    <Text style={styles.linkText}>Подробнее</Text>
                   </View>
-                  <Text style={styles.careerRole}>Менеджер по логистике</Text>
-                  <Text style={styles.careerLabel}>Ваша целевая должность</Text>
-                  <Text style={styles.careerProgress}>
-                    Прогресс: {completedModules}/{Math.max(totalModules, 1)} модулей
-                  </Text>
-                </View>
-              </AppCard>
+                  <View style={styles.careerCard}>
+                    <View style={styles.careerBadge}>
+                      <Text style={styles.careerBadgeText}>{careerMilestone?.emoji ?? '👤'}</Text>
+                    </View>
+                    <Text style={styles.careerRole}>{careerMilestone?.title ?? 'Профессия логиста'}</Text>
+                    <Text style={styles.careerLabel}>
+                      Текущий этап примерного пути (по курсам: {courseCompletionPct}%)
+                    </Text>
+                    <Text style={styles.careerProgress}>
+                      Курсы: {completedCourses}/{Math.max(totalCourses, 1)} · модули:{' '}
+                      {completedModules}/{Math.max(totalModules, 1)}
+                    </Text>
+                  </View>
+                </AppCard>
+              </Pressable>
 
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Недавние достижения</Text>
@@ -510,6 +525,9 @@ const styles = StyleSheet.create({
     color: palette.orange,
     fontSize: 16,
     fontWeight: '800',
+  },
+  careerPressable: {
+    borderRadius: 22,
   },
   careerHeader: {
     flexDirection: 'row',
