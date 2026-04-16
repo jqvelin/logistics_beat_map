@@ -18,6 +18,25 @@ type SanitizedQuizTaskContent = Omit<QuizTaskContent, 'answer'>;
 
 const XP_PER_TASK = 25;
 
+export type AchievementWithStatus = {
+  id: string;
+  key: string;
+  title: string;
+  description: string;
+  emoji: string;
+  unlocked: boolean;
+  unlockedAt: string | null;
+};
+
+type NewlyUnlockedAchievement = {
+  id: string;
+  key: string;
+  title: string;
+  description: string;
+  emoji: string;
+  unlockedAt: string;
+};
+
 /** At least this many full lessons must be completed. */
 const MIN_COMPLETED_LESSONS_FOR_QUICK_PRACTICE = 2;
 /** Pool: completed quiz tasks the user may revisit. */
@@ -312,9 +331,11 @@ export class LearningService {
     }
 
     let updatedUser = user;
+    let newlyUnlockedAchievements: NewlyUnlockedAchievement[] = [];
 
     if (!existingProgress?.completed) {
       updatedUser = await this.updateGamification(userId, user, completedAt);
+      newlyUnlockedAchievements = await this.evaluateNewAchievements(userId);
     }
 
     return {
@@ -322,6 +343,117 @@ export class LearningService {
       progress,
       user: updatedUser,
       awardedXp: existingProgress?.completed ? 0 : XP_PER_TASK,
+      newlyUnlockedAchievements,
+    };
+  }
+
+  async getAchievements(userId: string): Promise<AchievementWithStatus[]> {
+    const rows = await this.prisma.achievement.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      include: {
+        users: {
+          where: { userId },
+          select: { unlockedAt: true },
+          take: 1,
+        },
+      },
+    });
+
+    return rows.map((a) => {
+      const unlock = a.users[0];
+      return {
+        id: a.id,
+        key: a.key,
+        title: a.title,
+        description: a.description,
+        emoji: a.emoji,
+        unlocked: Boolean(unlock),
+        unlockedAt: unlock?.unlockedAt?.toISOString() ?? null,
+      };
+    });
+  }
+
+  private async evaluateNewAchievements(
+    userId: string,
+  ): Promise<NewlyUnlockedAchievement[]> {
+    const out: NewlyUnlockedAchievement[] = [];
+    const completedLessons = await this.countCompletedLessonsForUser(userId);
+
+    if (completedLessons >= 1) {
+      const first = await this.tryUnlockAchievement(userId, 'first_lesson');
+      if (first) {
+        out.push(first);
+      }
+    }
+
+    return out;
+  }
+
+  private async countCompletedLessonsForUser(userId: string): Promise<number> {
+    const completedRows = await this.prisma.progress.findMany({
+      where: { userId, completed: true },
+      select: { taskId: true },
+    });
+    const doneTasks = new Set(completedRows.map((r) => r.taskId));
+
+    const lessons = await this.prisma.lesson.findMany({
+      select: {
+        tasks: { select: { id: true } },
+      },
+    });
+
+    let count = 0;
+    for (const lesson of lessons) {
+      if (lesson.tasks.length === 0) {
+        continue;
+      }
+      if (lesson.tasks.every((t) => doneTasks.has(t.id))) {
+        count += 1;
+      }
+    }
+
+    return count;
+  }
+
+  private async tryUnlockAchievement(
+    userId: string,
+    key: string,
+  ): Promise<NewlyUnlockedAchievement | null> {
+    const achievement = await this.prisma.achievement.findUnique({
+      where: { key },
+    });
+
+    if (!achievement) {
+      return null;
+    }
+
+    const existing = await this.prisma.userAchievement.findUnique({
+      where: {
+        userId_achievementId: {
+          userId,
+          achievementId: achievement.id,
+        },
+      },
+    });
+
+    if (existing) {
+      return null;
+    }
+
+    const row = await this.prisma.userAchievement.create({
+      data: {
+        userId,
+        achievementId: achievement.id,
+      },
+    });
+
+    return {
+      id: achievement.id,
+      key: achievement.key,
+      title: achievement.title,
+      description: achievement.description,
+      emoji: achievement.emoji,
+      unlockedAt: row.unlockedAt.toISOString(),
     };
   }
 

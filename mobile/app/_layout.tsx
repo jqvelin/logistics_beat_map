@@ -6,6 +6,7 @@ import 'react-native-reanimated';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { lightNavigationTheme, palette } from '@/constants/theme';
 import { LoadingScreen } from '@/components/loading-screen';
+import { AppToasts } from '@/components/app-toasts';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -16,6 +17,7 @@ export default function RootLayout() {
     <AuthProvider>
       <ThemeProvider value={lightNavigationTheme}>
         <RootNavigator />
+        <AppToasts />
         <StatusBar style="light" backgroundColor={palette.purple} />
       </ThemeProvider>
     </AuthProvider>
@@ -58,6 +60,7 @@ function RootNavigator() {
       <Stack.Screen name="practice" />
       <Stack.Screen name="quick-practice" />
       <Stack.Screen name="career-path" />
+      <Stack.Screen name="achievements" />
     </Stack>
   );
 }

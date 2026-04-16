@@ -1,5 +1,6 @@
 import { env } from '@/lib/env';
 import type {
+  AchievementDefinition,
   AuthResponse,
   CompleteTaskResponse,
   CourseDetail,
@@ -83,6 +84,9 @@ export const api = {
   },
   getProgress(token: string) {
     return request<ProgressResponse>('/learning/progress', { token });
+  },
+  getAchievements(token: string) {
+    return request<AchievementDefinition[]>('/learning/achievements', { token });
   },
   getQuickPracticeSession(token: string) {
     return request<QuickPracticeSession>('/learning/quick-practice', { token });

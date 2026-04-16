@@ -1693,6 +1693,7 @@ async function main(): Promise<void> {
   const passwordHash = await bcrypt.hash('password123', 10);
 
   await prisma.progress.deleteMany();
+  await prisma.userAchievement.deleteMany();
   await prisma.task.deleteMany();
   await prisma.lesson.deleteMany();
   await prisma.module.deleteMany();
@@ -1766,6 +1767,49 @@ async function main(): Promise<void> {
         taskId: firstTaskId,
         completed: true,
         completedAt: new Date(),
+      },
+    });
+  }
+
+  const achievementDefs = [
+    {
+      key: 'first_lesson',
+      title: 'Первые шаги',
+      description: 'Полностью завершите первый учебный урок',
+      emoji: '🎯',
+      sortOrder: 0,
+    },
+    {
+      key: 'week_streak',
+      title: 'Первая пройденная неделя',
+      description: 'Выполняйте задания 7 дней подряд',
+      emoji: '🏅',
+      sortOrder: 1,
+    },
+    {
+      key: 'perfect_lesson',
+      title: 'Идеальный результат',
+      description: 'Соберите первый полный урок без ошибок в тестах',
+      emoji: '⭐',
+      sortOrder: 2,
+    },
+  ] as const;
+
+  for (const def of achievementDefs) {
+    await prisma.achievement.upsert({
+      where: { key: def.key },
+      update: {
+        title: def.title,
+        description: def.description,
+        emoji: def.emoji,
+        sortOrder: def.sortOrder,
+      },
+      create: {
+        key: def.key,
+        title: def.title,
+        description: def.description,
+        emoji: def.emoji,
+        sortOrder: def.sortOrder,
       },
     });
   }

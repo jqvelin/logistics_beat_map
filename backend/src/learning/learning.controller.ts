@@ -40,6 +40,11 @@ export class LearningController {
     return this.learningService.getQuickPracticeSession(user.sub);
   }
 
+  @Get('achievements')
+  getAchievements(@CurrentUser() user: { sub: string }) {
+    return this.learningService.getAchievements(user.sub);
+  }
+
   @Post('complete-task')
   @HttpCode(200)
   completeTask(

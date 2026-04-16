@@ -165,6 +165,25 @@ export type NextTaskResponse =
       };
     });
 
+export type AchievementDefinition = {
+  id: string;
+  key: string;
+  title: string;
+  description: string;
+  emoji: string;
+  unlocked: boolean;
+  unlockedAt: string | null;
+};
+
+export type UnlockedAchievementPayload = {
+  id: string;
+  key: string;
+  title: string;
+  description: string;
+  emoji: string;
+  unlockedAt: string;
+};
+
 export type CompleteTaskResponse = {
   task: LessonTask & {
     lesson?: {
@@ -191,4 +210,6 @@ export type CompleteTaskResponse = {
   };
   user: User;
   awardedXp: number;
+  /** Present on current API; treat missing as []. */
+  newlyUnlockedAchievements?: UnlockedAchievementPayload[];
 };

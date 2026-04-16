@@ -18,6 +18,7 @@ import { Screen } from '@/components/screen';
 import { gradients, palette, radii } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError, api } from '@/lib/api';
+import { showAchievementUnlockToasts } from '@/lib/achievement-toasts';
 import type {
   CompleteTaskResponse,
   LessonTask,
@@ -144,6 +145,7 @@ export default function QuickPracticeScreen() {
 
       setCtaXp(response.awardedXp);
       setCtaPhase('correct');
+      showAchievementUnlockToasts(response.newlyUnlockedAchievements ?? []);
 
       ctaTimerRef.current = setTimeout(() => {
         ctaTimerRef.current = null;

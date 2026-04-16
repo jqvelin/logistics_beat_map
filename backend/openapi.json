@@ -202,6 +202,20 @@
         ]
       }
     },
+    "/api/learning/achievements": {
+      "get": {
+        "operationId": "LearningController_getAchievements",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Learning"
+        ]
+      }
+    },
     "/api/learning/complete-task": {
       "post": {
         "operationId": "LearningController_completeTask",

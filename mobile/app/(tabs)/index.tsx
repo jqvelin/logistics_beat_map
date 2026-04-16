@@ -20,7 +20,7 @@ import {
   getCareerStepIndexFromCourses,
 } from '@/lib/career-path';
 import { buildHomeModules } from '@/lib/progress';
-import type { CourseSummary, ProgressResponse } from '@/lib/types';
+import type { AchievementDefinition, CourseSummary, ProgressResponse } from '@/lib/types';
 
 export default function HomeScreen() {
   const { token, user, refreshUser } = useAuth();
@@ -29,20 +29,23 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [careerTab, setCareerTab] = useState<'career' | 'competition'>('career');
+  const [achievements, setAchievements] = useState<AchievementDefinition[]>([]);
 
   const load = useCallback(async () => {
     if (!token) {
       return;
     }
 
-    const [coursesResponse, progressResponse] = await Promise.all([
+    const [coursesResponse, progressResponse, achievementsResponse] = await Promise.all([
       api.getCourses(),
       api.getProgress(token),
+      api.getAchievements(token),
       refreshUser(),
     ]);
 
     setCourses(coursesResponse);
     setProgress(progressResponse);
+    setAchievements(achievementsResponse);
     setLoaded(true);
   }, [refreshUser, token]);
 
@@ -77,6 +80,13 @@ export default function HomeScreen() {
   const careerStepIndex = getCareerStepIndexFromCourses(completedCourses, totalCourses);
   const careerMilestone = LOGISTICS_MANAGER_CAREER_MILESTONES[careerStepIndex];
   const quickPracticeEligible = progress?.quickPracticeEligible ?? false;
+
+  const recentAchievements = useMemo(() => {
+    return achievements
+      .filter((a) => a.unlocked && a.unlockedAt)
+      .sort((a, b) => (b.unlockedAt ?? '').localeCompare(a.unlockedAt ?? ''))
+      .slice(0, 2);
+  }, [achievements]);
 
   if (!loaded && !refreshing) {
     return <LoadingScreen omitBottomSafeArea />;
@@ -275,39 +285,47 @@ export default function HomeScreen() {
                 </AppCard>
               </Pressable>
 
-              <View style={styles.sectionHeader}>
+              <View style={styles.achievementsSectionHeader}>
                 <Text style={styles.sectionTitle}>Недавние достижения</Text>
+                <Pressable onPress={() => router.push('/achievements')} hitSlop={12}>
+                  <Text style={styles.linkText}>Все ›</Text>
+                </Pressable>
               </View>
 
-              <AppCard>
-                <View style={styles.achievementRow}>
-                  <View style={[styles.achievementIcon, { backgroundColor: palette.yellowSoft }]}>
-                    <Text style={styles.achievementEmoji}>🏅</Text>
-                  </View>
-                  <View style={styles.achievementBody}>
-                    <Text style={styles.achievementTitle}>Первая пройденная неделя!</Text>
-                    <Text style={styles.achievementDescription}>
-                      Выполняйте задания 7 дней подряд
-                    </Text>
-                  </View>
-                </View>
-              </AppCard>
-
-              <AppCard>
-                <View style={styles.achievementRow}>
-                  <View style={[styles.achievementIcon, { backgroundColor: palette.greenSoft }]}>
-                    <Text style={styles.achievementEmoji}>⭐</Text>
-                  </View>
-                  <View style={styles.achievementBody}>
-                    <Text style={styles.achievementTitle}>Идеальный результат</Text>
-                    <Text style={styles.achievementDescription}>
-                      {completedLessons > 0
-                        ? 'Вы уже закрыли один из уроков без пропусков'
-                        : 'Соберите первый полный урок без ошибок'}
-                    </Text>
-                  </View>
-                </View>
-              </AppCard>
+              {recentAchievements.length === 0 ? (
+                <Pressable onPress={() => router.push('/achievements')}>
+                  <AppCard>
+                    <View style={styles.achievementRow}>
+                      <View style={[styles.achievementIcon, { backgroundColor: '#E8ECF4' }]}>
+                        <Text style={styles.achievementEmoji}>🏅</Text>
+                      </View>
+                      <View style={styles.achievementBody}>
+                        <Text style={styles.achievementTitle}>Пока нет открытых наград</Text>
+                        <Text style={styles.achievementDescription}>
+                          Завершите первый урок целиком — и появится первое достижение. Нажмите, чтобы
+                          увидеть полный список.
+                        </Text>
+                      </View>
+                    </View>
+                  </AppCard>
+                </Pressable>
+              ) : (
+                recentAchievements.map((a) => (
+                  <Pressable key={a.id} onPress={() => router.push('/achievements')}>
+                    <AppCard>
+                      <View style={styles.achievementRow}>
+                        <View style={[styles.achievementIcon, { backgroundColor: palette.yellowSoft }]}>
+                          <Text style={styles.achievementEmoji}>{a.emoji}</Text>
+                        </View>
+                        <View style={styles.achievementBody}>
+                          <Text style={styles.achievementTitle}>{a.title}</Text>
+                          <Text style={styles.achievementDescription}>{a.description}</Text>
+                        </View>
+                      </View>
+                    </AppCard>
+                  </Pressable>
+                ))
+              )}
             </>
           )}
 
@@ -430,6 +448,12 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     marginTop: 8,
+  },
+  achievementsSectionHeader: {
+    marginTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   sectionTitle: {
     color: palette.text,
