@@ -17,6 +17,7 @@ type QuizTaskContent = {
 type SanitizedQuizTaskContent = Omit<QuizTaskContent, 'answer'>;
 
 const XP_PER_TASK = 25;
+const NON_PROGRESS_TASK_TYPES = new Set(['theory']);
 
 export type AchievementWithStatus = {
   id: string;
@@ -58,6 +59,11 @@ export class LearningService {
         select: {
           taskId: true,
           completedAt: true,
+          task: {
+            select: {
+              type: true,
+            },
+          },
         },
       }),
       this.prisma.course.findMany({
@@ -73,6 +79,7 @@ export class LearningService {
                     orderBy: { createdAt: 'asc' },
                     select: {
                       id: true,
+                      type: true,
                     },
                   },
                 },
@@ -83,18 +90,24 @@ export class LearningService {
       }),
     ]);
 
-    const completedTaskIds = completedProgress.map((item) => item.taskId);
+    const trackableCompletedProgress = completedProgress.filter(
+      (item) => !NON_PROGRESS_TASK_TYPES.has(item.task.type),
+    );
+    const completedTaskIds = trackableCompletedProgress.map((item) => item.taskId);
     const completedTaskIdSet = new Set(completedTaskIds);
     const todayDayNumber = this.toDayNumber(new Date());
-    const tasksCompletedToday = completedProgress.filter((item) => {
+    const tasksCompletedToday = trackableCompletedProgress.filter((item) => {
       return item.completedAt && this.toDayNumber(item.completedAt) === todayDayNumber;
     }).length;
 
     const coursesProgress = courses.map((course) => {
       const modules = course.modules.map((module) => {
         const lessons = module.lessons.map((lesson) => {
-          const totalTasks = lesson.tasks.length;
-          const completedTasks = lesson.tasks.filter((task) =>
+          const progressTasks = lesson.tasks.filter(
+            (task) => !NON_PROGRESS_TASK_TYPES.has(task.type),
+          );
+          const totalTasks = progressTasks.length;
+          const completedTasks = progressTasks.filter((task) =>
             completedTaskIdSet.has(task.id),
           ).length;
 
@@ -235,6 +248,7 @@ export class LearningService {
   async getNextTask(userId: string) {
     const task = await this.prisma.task.findFirst({
       where: {
+        type: { notIn: [...NON_PROGRESS_TASK_TYPES] },
         progress: {
           none: {
             userId,
@@ -281,6 +295,10 @@ export class LearningService {
 
     if (!task) {
       throw new NotFoundException('Задание не найдено');
+    }
+
+    if (NON_PROGRESS_TASK_TYPES.has(task.type)) {
+      throw new BadRequestException('Теория не отправляется на проверку');
     }
 
     this.validateQuizAnswer(task, dto);
@@ -392,22 +410,36 @@ export class LearningService {
   private async countCompletedLessonsForUser(userId: string): Promise<number> {
     const completedRows = await this.prisma.progress.findMany({
       where: { userId, completed: true },
-      select: { taskId: true },
+      select: {
+        taskId: true,
+        task: {
+          select: {
+            type: true,
+          },
+        },
+      },
     });
-    const doneTasks = new Set(completedRows.map((r) => r.taskId));
+    const doneTasks = new Set(
+      completedRows
+        .filter((r) => !NON_PROGRESS_TASK_TYPES.has(r.task.type))
+        .map((r) => r.taskId),
+    );
 
     const lessons = await this.prisma.lesson.findMany({
       select: {
-        tasks: { select: { id: true } },
+        tasks: { select: { id: true, type: true } },
       },
     });
 
     let count = 0;
     for (const lesson of lessons) {
-      if (lesson.tasks.length === 0) {
+      const progressTasks = lesson.tasks.filter(
+        (task) => !NON_PROGRESS_TASK_TYPES.has(task.type),
+      );
+      if (progressTasks.length === 0) {
         continue;
       }
-      if (lesson.tasks.every((t) => doneTasks.has(t.id))) {
+      if (progressTasks.every((t) => doneTasks.has(t.id))) {
         count += 1;
       }
     }
